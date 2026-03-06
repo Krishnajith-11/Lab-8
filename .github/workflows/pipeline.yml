@@ -1,0 +1,64 @@
+name: ML Pipeline
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  train:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v3
+
+      - name: Setup Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: "3.10"
+
+      - name: Install Dependencies
+        run: |
+          pip install -r requirements.txt
+          pip install dvc[s3]
+          pip install awscli
+
+      - name: Configure AWS Credentials
+        run: |
+          aws configure set aws_access_key_id ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws configure set aws_secret_access_key ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws configure set default.region us-east-1
+
+      - name: Pull Dataset from S3
+        run: dvc pull
+
+      - name: Train Model
+        run: python src/train.py
+
+      - name: Show Results in GitHub Summary
+        run: |
+          echo "## Result Version 1" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Roll No:** 2022BCS0037" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### Training Metrics" >> $GITHUB_STEP_SUMMARY
+          cat metrics.json >> $GITHUB_STEP_SUMMARY
+
+      - name: Save Metrics
+        uses: actions/upload-artifact@v4
+        with:
+          name: metrics
+          path: metrics.json
+
+      - name: Login to Docker Hub
+        run: |
+          echo ${{ secrets.DOCKERHUB_ACCESSTOKEN }} | docker login -u ${{ secrets.DOCKERHUB_USERNAME }} --password-stdin
+
+      - name: Build Docker Image
+        run: |
+          docker build -t ${{ secrets.DOCKERHUB_USERNAME }}/ml-housing-model:latest .
+
+      - name: Push Docker Image
+        run: |
+          docker push ${{ secrets.DOCKERHUB_USERNAME }}/ml-housing-model:latest

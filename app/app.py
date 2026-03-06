@@ -1,0 +1,1 @@
+print("Housing price model API placeholder")
